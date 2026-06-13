@@ -9,6 +9,8 @@ __pycache__/
 
 
 *.html
+!Notebook.html
+
 *.xlsx
 *.csv
 

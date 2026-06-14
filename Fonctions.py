@@ -124,10 +124,6 @@ def backtest_portfolio(allocation_sp500, allocation_tsx, years):
         comparation_end_value = position_SP * closing_for_backtest["SP500"][i+number_of_months][1] +\
                                position_TSX * closing_for_backtest["TSX"][i+number_of_months][1] +\
                                position_Ex_US_Can * closing_for_backtest["Ex_US_Can"][i+number_of_months][1]
-        #we will incorporate the inflation in the comparation to see the excess return in today dollars.
-        inflation = 1.02**(number_of_months/12)
-        comparation_end_value /= inflation
-        portfolio_end_value /= inflation
         output.append((closing_for_backtest["SP500"][i][0], portfolio_end_value, comparation_end_value, portfolio_end_value - comparation_end_value, loan))
 
     return output
@@ -152,7 +148,7 @@ def student(means_global, matrix_cov_global, df=5):
     rate_sp500, rate_tsx, rate_ex = means_global + z / np.sqrt(u / df)
     return (rate_sp500, rate_tsx, rate_ex)
 
-def montecarlo(allocation_sp500, allocation_tsx, years, itrations, loan_rate, change_rate_fonction):
+def montecarlo(allocation_sp500, allocation_tsx, years, iterations, loan_rate, change_rate_fonction):
     allocation_ex_us_can = 100 - allocation_sp500 - allocation_tsx
     ponderation_sp500 = allocation_sp500 / 100
     ponderation_tsx = allocation_tsx / 100
@@ -168,7 +164,7 @@ def montecarlo(allocation_sp500, allocation_tsx, years, itrations, loan_rate, ch
     data_matrix_global = np.array([ret_sp500, ret_tsx, ret_ex])
     matrix_cov_global = np.cov(data_matrix_global)
     output = []
-    for _ in range(itrations):
+    for _ in range(iterations):
         loan = 1000
         current_sp_price = closing_for_bootstrap["SP500"][-1][1]
         current_tsx_price = closing_for_bootstrap["TSX"][-1][1]
@@ -183,9 +179,10 @@ def montecarlo(allocation_sp500, allocation_tsx, years, itrations, loan_rate, ch
         position_ex_us_can = loan * loan_rate * ponderation_ex_us_can / current_ex_us_can_price
         for j in range(0, 36):
             #price change
-            current_sp_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[0])
-            current_tsx_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[1])
-            current_ex_us_can_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[2])
+            price_change = change_rate_fonction(means_global, matrix_cov_global)
+            current_sp_price *= (1 + price_change[0])
+            current_tsx_price *= (1 + price_change[1])
+            current_ex_us_can_price *= (1 + price_change[2])
 
             interest = loan * mounthly_rate
             position_sp500 += interest * ponderation_sp500 / current_sp_price
@@ -200,9 +197,10 @@ def montecarlo(allocation_sp500, allocation_tsx, years, itrations, loan_rate, ch
         position_ex_us_can += working_capital_increase * ponderation_ex_us_can / current_ex_us_can_price
         for j in range(36, number_of_months):
             #price change
-            current_sp_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[0])
-            current_tsx_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[1])
-            current_ex_us_can_price *= (1 + change_rate_fonction(means_global, matrix_cov_global)[2])
+            price_change = change_rate_fonction(means_global, matrix_cov_global)
+            current_sp_price *= (1 + price_change[0])
+            current_tsx_price *= (1 + price_change[1])
+            current_ex_us_can_price *= (1 + price_change[2])
 
             payement = loan * mounthly_rate / (1 - (1 + mounthly_rate)**(j- number_of_months))
             interest = loan * mounthly_rate
@@ -217,11 +215,57 @@ def montecarlo(allocation_sp500, allocation_tsx, years, itrations, loan_rate, ch
         portfolio_end_value_dca = position_sp500 * current_sp_price + position_tsx * current_tsx_price + position_ex_us_can * current_ex_us_can_price
         portfolio_end_value_lump_sum = position_lump_sum_sp500 * current_sp_price + position_lump_sum_tsx * current_tsx_price + position_lump_sum_ex_us_can * current_ex_us_can_price
         comparation_end_value = portfolio_end_value_lump_sum - portfolio_end_value_dca
-        #we will incorporate the inflation in the comparation to see the excess return in today dollars.
-        inflation = 1.02**(number_of_months/12)
-        comparation_end_value /= inflation
-        portfolio_end_value_dca /= inflation
-        portfolio_end_value_lump_sum /= inflation
+        output.append(("No date in this context", portfolio_end_value_lump_sum, portfolio_end_value_dca, comparation_end_value, loan))
+    return output
+
+def exit_3_years(allocation_sp500, allocation_tsx, iterations, loan_rate, change_rate_fonction):
+    years = 3
+    allocation_ex_us_can = 100 - allocation_sp500 - allocation_tsx
+    ponderation_sp500 = allocation_sp500 / 100
+    ponderation_tsx = allocation_tsx / 100
+    ponderation_ex_us_can = allocation_ex_us_can / 100
+    number_of_months = years * 12
+
+    #To make the montecarlo more efficient, we will generate all the random rates at once and then use them in the simulation. 
+    # This way we avoid generating random numbers in the inner loop, which can be computationally expensive.
+    ret_sp500 = [x[1] for x in rates_for_bootstrap["SP500"]]
+    ret_tsx = [x[1] for x in rates_for_bootstrap["TSX"]]
+    ret_ex = [x[1] for x in rates_for_bootstrap["Ex_US_Can"]]
+    means_global = np.array([np.mean(ret_sp500), np.mean(ret_tsx), np.mean(ret_ex)])
+    data_matrix_global = np.array([ret_sp500, ret_tsx, ret_ex])
+    matrix_cov_global = np.cov(data_matrix_global)
+    output = []
+    for _ in range(iterations):
+        loan = 1000
+        current_sp_price = closing_for_bootstrap["SP500"][-1][1]
+        current_tsx_price = closing_for_bootstrap["TSX"][-1][1]
+        current_ex_us_can_price = closing_for_bootstrap["Ex_US_Can"][-1][1]
+        position_lump_sum_sp500 = loan * ponderation_sp500 / current_sp_price
+        position_lump_sum_tsx = loan * ponderation_tsx / current_tsx_price
+        position_lump_sum_ex_us_can = loan * ponderation_ex_us_can / current_ex_us_can_price
+        mounthly_rate = (1 + loan_rate)**(1/12) - 1
+        #working capital/ 12 mouth of cashflow
+        position_sp500 = loan * loan_rate * ponderation_sp500 / current_sp_price
+        position_tsx = loan * loan_rate * ponderation_tsx / current_tsx_price
+        position_ex_us_can = loan * loan_rate * ponderation_ex_us_can / current_ex_us_can_price
+        for j in range(0, 36):
+            #price change
+            price_change = change_rate_fonction(means_global, matrix_cov_global)
+            current_sp_price *= (1 + price_change[0])
+            current_tsx_price *= (1 + price_change[1])
+            current_ex_us_can_price *= (1 + price_change[2])
+
+            interest = loan * mounthly_rate
+            position_sp500 += interest * ponderation_sp500 / current_sp_price
+            position_tsx += interest * ponderation_tsx / current_tsx_price
+            position_ex_us_can += interest * ponderation_ex_us_can / current_ex_us_can_price
+        # removing the working capital
+        position_sp500 -= loan * loan_rate * ponderation_sp500 / current_sp_price
+        position_tsx -= loan * loan_rate * ponderation_tsx / current_tsx_price
+        position_ex_us_can -= loan * loan_rate * ponderation_ex_us_can / current_ex_us_can_price
+        portfolio_end_value_dca = position_sp500 * current_sp_price + position_tsx * current_tsx_price + position_ex_us_can * current_ex_us_can_price
+        portfolio_end_value_lump_sum = position_lump_sum_sp500 * current_sp_price + position_lump_sum_tsx * current_tsx_price + position_lump_sum_ex_us_can * current_ex_us_can_price
+        comparation_end_value = portfolio_end_value_lump_sum - portfolio_end_value_dca - loan
         output.append(("No date in this context", portfolio_end_value_lump_sum, portfolio_end_value_dca, comparation_end_value, loan))
     return output
 
@@ -277,4 +321,3 @@ def cashflow(loan, rate_of_loan, years):
     output += "Mounthly cashflow: " + str(cashflow_list[36]) + "\n"
     output += "Yearly cashflow: " + str(cashflow_list[36] * 12) + "\n" +  "\n" + "\n"
     return output
-    

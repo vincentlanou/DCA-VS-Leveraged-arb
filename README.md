@@ -22,6 +22,7 @@ The pipeline is divided into three components:
    * **Parametric Simulations:** Uses Multivariate Normal and Student's t-distributions (via Cholesky decomposition) to stress-test the portfolio against fat-tail risks and extreme market conditions.
 
 ## Key Findings
+https://vincentlanou.github.io/DCA-VS-Leveraged-arb/Notebook.html
 *Note: All final outputs are discounted by a 2% target inflation rate to reflect real purchasing power rather than nominal returns.*
 
 Based on a 7-year horizon with a 5% average borrowing cost and a loan of $1000 and data starting in 2003:
